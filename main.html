@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fast JSON Table Viewer</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-content: #fff;
+      --base-100: #f8fafc;
+      --base-200: #fff;
+      --base-300: #e2e8f0;
+      --content: #0f172a;
+      --muted: #64748b;
+      --danger: #b91c1c;
+      --row-height: 38px;
+      --header-height: 42px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--base-100);
+      color: var(--content);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .app { width: min(1600px, calc(100% - 24px)); margin: auto; padding: 22px 0 30px; }
+    h1 { margin: 0 0 4px; font-size: clamp(1.5rem, 3vw, 2.2rem); letter-spacing: -.04em; }
+    .subtitle, .hint { color: var(--muted); margin: 0; }
+    .subtitle { line-height: 1.45; }
+    .panel { background: var(--base-200); border: 1px solid var(--base-300); border-radius: 12px; box-shadow: 0 7px 24px rgba(15, 23, 42, .06); }
+    .toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px) auto auto auto; gap: 9px; padding: 12px; margin: 20px 0 10px; }
+    input, button, label { min-height: 40px; border: 1px solid var(--base-300); border-radius: 8px; font: inherit; }
+    input[type="search"], select { width: 100%; min-height: 40px; padding: 0 12px; color: var(--content); background: var(--base-100); outline: none; }
+    select:disabled { opacity: .55; cursor: not-allowed; }
+    input[type="search"] { padding: 0 12px; }
+    input[type="search"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, .14); }
+    button, label { display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; cursor: pointer; white-space: nowrap; background: var(--base-300); color: var(--content); }
+    button:hover, label:hover { filter: brightness(.97); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .primary { color: var(--primary-content); background: var(--primary); border-color: var(--primary); }
+    label input { display: none; }
+    .status { display: flex; justify-content: space-between; gap: 12px; min-height: 24px; margin: 0 2px 9px; color: var(--muted); font-size: .9rem; }
+    .success { color: #15803d; }
+    .error { color: var(--danger); }
+    .viewer { overflow: hidden; }
+
+    /* Only visible rows are placed in the DOM. This is the main speed improvement. */
+    .viewport { height: 70vh; min-height: 360px; overflow: auto; position: relative; background: var(--base-200); }
+    .stage { position: relative; min-width: var(--grid-width, 100%); }
+    .grid-header, .grid-row { display: grid; grid-template-columns: var(--grid-columns); min-width: var(--grid-width, 100%); }
+    .grid-header { position: sticky; top: 0; z-index: 4; height: var(--header-height); background: var(--base-300); }
+    .grid-header button { border: 0; border-radius: 0; min-height: var(--header-height); justify-content: flex-start; gap: 6px; overflow: hidden; padding: 0 10px; background: transparent; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .035em; text-align: left; }
+    .grid-header button:hover { color: var(--primary); }
+    .sort-icon { color: var(--muted); flex: 0 0 auto; }
+    .content { position: relative; height: 0; }
+    .grid-row { position: absolute; left: 0; right: 0; height: var(--row-height); align-items: stretch; border-bottom: 1px solid var(--base-300); background: var(--base-200); }
+    .grid-row:nth-child(even) { background: #fbfdff; }
+    .grid-row:hover { background: #eff6ff; }
+    .grid-row.result-one { background: #dcfce7; }
+    .grid-row.result-x { background: #fef9c3; }
+    .grid-row.result-two { background: #fee2e2; }
+    .grid-row.result-one:hover { background: #bbf7d0; }
+    .grid-row.result-x:hover { background: #fef08a; }
+    .grid-row.result-two:hover { background: #fecaca; }
+    .cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 9px 10px; line-height: 20px; font-size: .9rem; }
+    .empty { min-height: 220px; display: grid; place-items: center; padding: 30px; text-align: center; color: var(--muted); }
+    .empty strong { display: block; color: var(--content); font-size: 1.05rem; margin-bottom: 5px; }
+    .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; color: var(--muted); font-size: .88rem; }
+    .footer-controls { display: flex; gap: 8px; }
+    .footer button { min-height: 34px; padding: 0 11px; }
+    .hint { margin-top: 10px; font-size: .82rem; }
+    code { background: var(--base-300); border-radius: 4px; padding: 2px 5px; }
+    @media (max-width: 700px) {
+      .toolbar { grid-template-columns: 1fr; }
+      .toolbar label, .toolbar button { width: 100%; }
+      .status, .footer { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>Fast JSON Table Viewer</h1>
+    <p class="subtitle">Designed for large JSON arrays. It renders only the rows visible on screen.</p>
+
+    <section class="panel toolbar">
+      <input id="search" type="search" placeholder="Search all columns..." autocomplete="off">
+      <select id="championshipFilter" aria-label="Filter by championship" disabled>
+        <option value="">All championships</option>
+      </select>
+      <button id="showGames" class="primary" type="button" disabled>Show selected games</button>
+      <label class="primary">Open JSON file<input id="file" type="file" accept=".json,application/json"></label>
+      <button id="reset" type="button">Reset</button>
+    </section>
+
+    <div class="status">
+      <span id="fileStatus">No JSON file loaded</span>
+      <span id="resultStatus"></span>
+    </div>
+
+    <section class="panel viewer">
+      <div id="empty" class="empty">
+        <div><strong>Select a JSON file to begin</strong>Expected format: an array of objects, for example <code>[{"name":"Alice","age":30}]</code>.</div>
+      </div>
+      <div id="viewport" class="viewport" hidden>
+        <div id="stage" class="stage">
+          <div id="header" class="grid-header"></div>
+          <div id="content" class="content"></div>
+        </div>
+      </div>
+      <div id="footer" class="footer" hidden>
+        <span id="pageInfo"></span>
+        <div class="footer-controls">
+          <button id="top" type="button">Top</button>
+          <button id="previous" type="button">Previous 1,000</button>
+          <button id="next" type="button">Next 1,000</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="hint">For security, browsers require you to choose the JSON file. The HTML file can stay in the same folder as the JSON file.</p>
+  </main>
+
+  <script>
+    (() => {
+      const $ = id => document.getElementById(id);
+      const file = $('file'), search = $('search'), championshipFilter = $('championshipFilter'), showGames = $('showGames'), reset = $('reset');
+      const fileStatus = $('fileStatus'), resultStatus = $('resultStatus');
+      const empty = $('empty'), viewport = $('viewport'), stage = $('stage');
+      const header = $('header'), content = $('content'), footer = $('footer');
+      const pageInfo = $('pageInfo'), topButton = $('top'), previous = $('previous'), next = $('next');
+
+      let columns = [], totalRows = 0, resultCount = 0, resultBuffer = null;
+      let championshipColumn = -1;
+      let resultColumn = -1;
+      let sortColumn = -1, sortDirection = 1, queryTimer = null, requestId = 0;
+      const rowHeight = 38, headerHeight = 42, overscan = 12, jumpSize = 1000;
+
+      const workerSource = `
+        let rows = [], columns = [], searchText = [], values = [];
+        const text = value => {
+          if (value === null || value === undefined) return '';
+          if (typeof value === 'object') {
+            try { return JSON.stringify(value); } catch { return ''; }
+          }
+          return String(value);
+        };
+        const normalize = value => String(value ?? '').trim().replace(/\\s+/g, ' ').toLowerCase();
+        const compare = (a, b) => {
+          if (a === b) return 0;
+          const an = Number(a), bn = Number(b);
+          if (a !== '' && b !== '' && Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+          return a < b ? -1 : 1;
+        };
+        self.onmessage = event => {
+          const message = event.data;
+          try {
+            if (message.type === 'load') {
+              const parsed = JSON.parse(message.source);
+              if (!Array.isArray(parsed)) throw new Error('The JSON root must be an array.');
+              rows = parsed.map(item => {
+                if (item && typeof item === 'object' && !Array.isArray(item)) return item;
+                return { value: item };
+              });
+              const names = new Set();
+              rows.forEach(row => Object.keys(row).forEach(key => names.add(key)));
+              columns = [...names];
+              values = rows.map(row => columns.map(column => text(row[column])));
+              searchText = values.map(row => row.join('\\u001f').toLowerCase());
+              const championshipColumn = columns.findIndex(column => normalize(column).includes('championship'));
+              const championshipOptions = championshipColumn >= 0
+                ? [...new Set(values.map(row => row[championshipColumn].trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+                : [];
+              self.postMessage({ type: 'loaded', columns, count: rows.length, championshipOptions });
+            }
+            if (message.type === 'process') {
+              const q = message.query.trim().toLowerCase();
+              let indexes = [];
+              const championship = normalize(message.championship);
+              for (let i = 0; i < searchText.length; i++) {
+                const rowChampionship = message.championshipColumn >= 0
+                  ? normalize(values[i][message.championshipColumn])
+                  : '';
+                const matchesSearch = !q || searchText[i].includes(q);
+                const matchesChampionship = !championship || rowChampionship === championship;
+                if (matchesSearch && matchesChampionship) indexes.push(i);
+              }
+              if (message.column >= 0) {
+                const column = message.column, direction = message.direction;
+                indexes.sort((left, right) => direction * compare(values[left][column] || '', values[right][column] || ''));
+              }
+              const result = new Uint32Array(indexes);
+              self.postMessage({ type: 'result', id: message.id, count: result.length, indexes: result.buffer }, [result.buffer]);
+            }
+            if (message.type === 'rows') {
+              const ordered = message.indexes ? new Uint32Array(message.indexes) : null;
+              const output = [];
+              for (let i = 0; i < message.length; i++) {
+                const position = message.start + i;
+                if (position >= message.count) break;
+                const sourceIndex = ordered ? ordered[position] : position;
+                output.push(values[sourceIndex]);
+              }
+              self.postMessage({ type: 'rows', id: message.id, start: message.start, rows: output });
+            }
+          } catch (error) {
+            self.postMessage({ type: 'error', message: error.message });
+          }
+        };
+      `;
+      const worker = new Worker(URL.createObjectURL(new Blob([workerSource], { type: 'application/javascript' })));
+
+      file.addEventListener('change', async event => {
+        const selected = event.target.files[0];
+        if (!selected) return;
+        fileStatus.className = '';
+        fileStatus.textContent = `Reading ${selected.name}...`;
+        resultStatus.textContent = '';
+        empty.hidden = true;
+        viewport.hidden = true;
+        footer.hidden = true;
+        try {
+          worker.postMessage({ type: 'load', source: await selected.text() });
+        } catch (error) { showError(error.message); }
+      });
+
+      worker.addEventListener('message', event => {
+        const message = event.data;
+        if (message.type === 'error') return showError(message.message);
+        if (message.type === 'loaded') {
+          columns = message.columns;
+          totalRows = message.count;
+          championshipColumn = columns.findIndex(column => column.trim().toLowerCase().includes('championship'));
+          resultColumn = findResultColumn(columns);
+          populateChampionshipFilter(message.championshipOptions || []);
+          sortColumn = -1;
+          sortDirection = 1;
+          search.value = '';
+          fileStatus.className = 'success';
+          fileStatus.textContent = `${file.files[0].name} loaded`;
+          configureGrid();
+          process();
+        }
+        if (message.type === 'result' && message.id === requestId) {
+          resultBuffer = message.indexes;
+          resultCount = message.count;
+          resultStatus.textContent = `${resultCount.toLocaleString()} of ${totalRows.toLocaleString()} records`;
+          viewport.hidden = false;
+          footer.hidden = false;
+          content.style.height = `${resultCount * rowHeight}px`;
+          viewport.scrollTop = 0;
+          renderVisible();
+          updateButtons();
+        }
+        if (message.type === 'rows' && message.id === requestId) renderRows(message.start, message.rows);
+      });
+
+      function populateChampionshipFilter(options) {
+        championshipFilter.innerHTML = '';
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = options.length ? 'All championships' : 'No championship column';
+        championshipFilter.appendChild(allOption);
+        options.forEach(optionValue => {
+          const option = document.createElement('option');
+          option.value = optionValue;
+          option.textContent = optionValue;
+          championshipFilter.appendChild(option);
+        });
+        championshipFilter.disabled = options.length === 0;
+        showGames.disabled = options.length === 0;
+      }
+
+      function configureGrid() {
+        const width = Math.max(900, columns.length * 160);
+        const template = columns.map(() => 'minmax(160px, 1fr)').join(' ');
+        stage.style.setProperty('--grid-width', `${width}px`);
+        stage.style.setProperty('--grid-columns', template);
+        header.innerHTML = '';
+        columns.forEach((column, index) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.title = `Sort by ${column}`;
+          button.textContent = column;
+          const icon = document.createElement('span');
+          icon.className = 'sort-icon';
+          icon.textContent = '↕';
+          button.appendChild(icon);
+          button.addEventListener('click', () => {
+            if (sortColumn === index) sortDirection *= -1;
+            else { sortColumn = index; sortDirection = 1; }
+            updateSortIndicators();
+            process();
+          });
+          header.appendChild(button);
+        });
+        updateSortIndicators();
+      }
+
+      function updateSortIndicators() {
+        [...header.querySelectorAll('.sort-icon')].forEach((icon, index) => {
+          icon.textContent = sortColumn === index ? (sortDirection === 1 ? '▲' : '▼') : '↕';
+        });
+      }
+
+      function process() {
+        requestId++;
+        const id = requestId;
+        resultStatus.textContent = sortColumn >= 0 ? 'Sorting and filtering…' : 'Filtering…';
+        worker.postMessage({
+          type: 'process',
+          id,
+          query: search.value,
+          championship: championshipFilter.value,
+          championshipColumn,
+          column: sortColumn,
+          direction: sortDirection
+        });
+      }
+
+      // Copy only the small visible window of row indexes when requesting rows.
+      function requestRows(start, length) {
+        const id = requestId;
+        // resultBuffer is an ArrayBuffer. Copy it correctly before transferring it.
+        const indexes = resultBuffer ? resultBuffer.slice(0) : null;
+        worker.postMessage({ type: 'rows', id, start, length, count: resultCount, indexes }, indexes ? [indexes] : []);
+      }
+
+      function renderVisible() {
+        if (!resultCount) { content.innerHTML = ''; return; }
+        const scrollTop = Math.max(0, viewport.scrollTop - headerHeight);
+        const visible = Math.ceil(viewport.clientHeight / rowHeight) + overscan * 2;
+        const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+        requestRows(start, visible);
+      }
+
+      function renderRows(start, rowData) {
+        content.innerHTML = '';
+        rowData.forEach((row, offset) => {
+          const rowElement = document.createElement('div');
+          rowElement.className = `grid-row ${resultClass(row[resultColumn])}`;
+          rowElement.style.top = `${(start + offset) * rowHeight}px`;
+          row.forEach(value => {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.textContent = value;
+            cell.title = value;
+            rowElement.appendChild(cell);
+          });
+          content.appendChild(rowElement);
+        });
+      }
+
+      function findResultColumn(columnNames) {
+        const exact = columnNames.findIndex(column => column.trim().toLowerCase() === 'result');
+        if (exact >= 0) return exact;
+        return columnNames.findIndex(column => /(^|[ _-])(result|outcome|prediction)([ _-]|$)/i.test(column.trim()));
+      }
+
+      function resultClass(value) {
+        const result = String(value ?? '').trim().toUpperCase();
+        if (result === '1') return 'result-one';
+        if (result === 'X') return 'result-x';
+        if (result === '2') return 'result-two';
+        return '';
+      }
+
+      function updateButtons() {
+        const position = Math.max(0, Math.floor(Math.max(0, viewport.scrollTop - headerHeight) / rowHeight));
+        pageInfo.textContent = resultCount ? `Showing rows ${position + 1}-${Math.min(position + 1 + Math.ceil(viewport.clientHeight / rowHeight), resultCount).toLocaleString()} of ${resultCount.toLocaleString()}` : 'No matching records';
+        previous.disabled = position === 0;
+        next.disabled = position + jumpSize >= resultCount;
+      }
+
+      viewport.addEventListener('scroll', () => { renderVisible(); updateButtons(); });
+      window.addEventListener('resize', renderVisible);
+      search.addEventListener('input', () => {
+        clearTimeout(queryTimer);
+        queryTimer = setTimeout(process, 180);
+      });
+      championshipFilter.addEventListener('change', () => {
+        showGames.disabled = !championshipFilter.value;
+        resultStatus.textContent = championshipFilter.value
+          ? 'Press “Show selected games” to apply the championship filter.'
+          : '';
+      });
+      showGames.addEventListener('click', () => {
+        if (championshipFilter.value) process();
+      });
+      reset.addEventListener('click', () => {
+        search.value = '';
+        championshipFilter.value = '';
+        showGames.disabled = championshipFilter.options.length <= 1;
+        sortColumn = -1;
+        sortDirection = 1;
+        updateSortIndicators();
+        process();
+      });
+      topButton.addEventListener('click', () => { viewport.scrollTop = 0; renderVisible(); updateButtons(); });
+      previous.addEventListener('click', () => { viewport.scrollTop = Math.max(0, viewport.scrollTop - jumpSize * rowHeight); });
+      next.addEventListener('click', () => { viewport.scrollTop = Math.min(viewport.scrollHeight, viewport.scrollTop + jumpSize * rowHeight); });
+
+      function showError(message) {
+        fileStatus.className = 'error';
+        fileStatus.textContent = `Error: ${message}`;
+        resultStatus.textContent = '';
+        empty.hidden = false;
+        viewport.hidden = true;
+        footer.hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>
