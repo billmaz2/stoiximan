@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Games Data Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            cursor: pointer;
+        }
+        th:hover {
+            background-color: #e6e6e6;
+        }
+        .result--1 { background-color: white; }
+        .result-1 { background-color: green; color: white; }
+        .result-X { background-color: yellow; }
+        .result-2 { background-color: red; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Games Data</h1>
+    <div id="loading">Loading data...</div>
+    <table id="gamesTable">
+        <thead id="tableHeader"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <script>
+        // List of JSON files to load (assumed to be in the same folder as this HTML)
+        const jsonFiles = [
+            "total_1.json",
+            "total_2.json",
+            "total_3.json",
+            "total_4.json",
+            "total_260905.json"
+        ];
+
+        // Global variable to store all games data
+        let allGames = [];
+        let currentSortColumn = null;
+        let currentSortDirection = 1; // 1 for ascending, -1 for descending
+
+        // Load all JSON files
+        async function loadData() {
+            try {
+                const responses = await Promise.all(
+                    jsonFiles.map(file => fetch(file))
+                );
+                const jsonData = await Promise.all(
+                    responses.map(res => res.json())
+                );
+                allGames = jsonData.flat(); // Combine all arrays into one
+                renderTable();
+            } catch (error) {
+                console.error("Error loading data:", error);
+                document.getElementById("loading").textContent = "Failed to load data. Make sure the JSON files are in the same folder as this HTML file.";
+            }
+        }
+
+        // Render the table
+        function renderTable() {
+            if (allGames.length === 0) return;
+
+            // Get column names from the first game object
+            const columns = Object.keys(allGames[0]);
+
+            // Render table header
+            const header = document.getElementById("tableHeader");
+            header.innerHTML = columns.map(col => `
+                <th onclick="sortTable('${col}')">
+                    ${col} ${currentSortColumn === col ? (currentSortDirection === 1 ? '↑' : '↓') : ''}
+                </th>
+            `).join("");
+
+            // Render table body
+            const body = document.getElementById("tableBody");
+            body.innerHTML = allGames.map(game => {
+                const result = game.result;
+                const resultClass = result === -1 ? "result--1" :
+                                   result === 1 ? "result-1" :
+                                   result === "X" ? "result-X" : "result-2";
+                return `<tr class="${resultClass}">
+                    ${columns.map(col => `<td>${game[col]}</td>`).join("")}
+                </tr>`;
+            }).join("");
+
+            document.getElementById("loading").style.display = "none";
+        }
+
+        // Sort table by column
+        function sortTable(column) {
+            if (currentSortColumn === column) {
+                currentSortDirection *= -1; // Toggle direction
+            } else {
+                currentSortColumn = column;
+                currentSortDirection = 1;
+            }
+
+            allGames.sort((a, b) => {
+                const valA = a[column];
+                const valB = b[column];
+                if (valA < valB) return -1 * currentSortDirection;
+                if (valA > valB) return 1 * currentSortDirection;
+                return 0;
+            });
+
+            renderTable();
+        }
+
+        // Load data on page load
+        window.onload = loadData;
+    </script>
+</body>
+</html>
