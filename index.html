@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fast JSON Table Viewer - Speed Demo</title>
+  <title>Fast JSON Table Viewer - Auto Load</title>
   <style>
     :root {
       --primary: #2563eb;
@@ -100,6 +100,7 @@
     }
     .stat-card .value.green { color: var(--success); }
     .stat-card .value.blue { color: var(--primary); }
+    .stat-card .value.orange { color: #f59e0b; }
 
     .toolbar {
       display: grid;
@@ -174,6 +175,7 @@
     }
     .status-bar .file-status.success { color: var(--success); }
     .status-bar .file-status.error { color: var(--danger); }
+    .status-bar .file-status.loading { color: #f59e0b; }
     .status-bar .result-count { font-weight: 600; color: var(--content); }
 
     .viewer-panel {
@@ -248,38 +250,15 @@
     .grid-row:nth-child(even) { background: #fafbfc; }
     .grid-row:hover { background: #eff6ff; }
     
-    /* Result 1 = GREEN */
-    .grid-row.result-1 { 
-      background: #dcfce7 !important; 
-    }
-    .grid-row.result-1:hover { 
-      background: #bbf7d0 !important; 
-    }
-    .grid-row.result-1:nth-child(even) { 
-      background: #dcfce7 !important; 
-    }
-    
-    /* Result X = Yellow */
-    .grid-row.result-x { 
-      background: #fef9c3 !important; 
-    }
-    .grid-row.result-x:hover { 
-      background: #fef08a !important; 
-    }
-    .grid-row.result-x:nth-child(even) { 
-      background: #fef9c3 !important; 
-    }
-    
-    /* Result 2 = Red */
-    .grid-row.result-2 { 
-      background: #fee2e2 !important; 
-    }
-    .grid-row.result-2:hover { 
-      background: #fecaca !important; 
-    }
-    .grid-row.result-2:nth-child(even) { 
-      background: #fee2e2 !important; 
-    }
+    .grid-row.result-1 { background: #dcfce7 !important; }
+    .grid-row.result-1:hover { background: #bbf7d0 !important; }
+    .grid-row.result-1:nth-child(even) { background: #dcfce7 !important; }
+    .grid-row.result-x { background: #fef9c3 !important; }
+    .grid-row.result-x:hover { background: #fef08a !important; }
+    .grid-row.result-x:nth-child(even) { background: #fef9c3 !important; }
+    .grid-row.result-2 { background: #fee2e2 !important; }
+    .grid-row.result-2:hover { background: #fecaca !important; }
+    .grid-row.result-2:nth-child(even) { background: #fee2e2 !important; }
     
     .cell {
       min-width: 0;
@@ -334,6 +313,24 @@
     .footer button:hover:not(:disabled) { background: var(--base-300); }
     .footer button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    /* Progress Bar */
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: var(--base-300);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 3px;
+    }
+    .progress-bar.complete { background: var(--success); }
+
     @media (max-width: 860px) {
       .toolbar {
         grid-template-columns: 1fr 1fr;
@@ -357,8 +354,8 @@
   <div class="presentation">
     <header class="hero">
       <h1>⚡ Fast JSON Table Viewer</h1>
-      <p class="subtitle">Load &amp; explore large JSON arrays instantly — only visible rows are rendered.</p>
-      <span class="badge">🚀 Virtual scrolling · Sorting · Filtering · 0 dependencies</span>
+      <p class="subtitle">Automatically loads all <code>total_*.json</code> files from the server</p>
+      <span class="badge">🚀 Virtual scrolling · Auto-load · Progress tracking · 0 dependencies</span>
     </header>
 
     <div class="stats-grid" id="statsGrid">
@@ -376,7 +373,7 @@
       </div>
       <div class="stat-card">
         <div class="label">Status</div>
-        <div class="value" id="statusValue" style="font-size:1rem;font-weight:500;">Ready</div>
+        <div class="value" id="statusValue" style="font-size:1rem;font-weight:500;">Initializing...</div>
       </div>
     </div>
 
@@ -391,17 +388,21 @@
     </div>
 
     <div class="status-bar">
-      <span class="file-status" id="fileStatus">No JSON file loaded</span>
+      <span class="file-status" id="fileStatus">⏳ Loading files...</span>
       <span class="result-count" id="resultStatus"></span>
+    </div>
+    
+    <div class="progress-container">
+      <div class="progress-bar" id="progressBar"></div>
     </div>
 
     <div class="viewer-panel">
       <div id="empty" class="empty">
         <div>
           <div class="icon">📄</div>
-          <strong>Select a JSON file to begin</strong>
-          <p style="margin-top:6px;">Expected format: an array of objects, e.g. <code>[{"name":"Alice","age":30}]</code></p>
-          <p style="margin-top:10px;font-size:0.85rem;color:#999;">⚠️ Make sure your JSON file is valid and contains an array</p>
+          <strong>Loading data from server...</strong>
+          <p style="margin-top:6px;">Looking for <code>total_*.json</code> files in the current directory</p>
+          <p style="margin-top:10px;font-size:0.85rem;color:#999;">⏳ Please wait while files are being loaded</p>
         </div>
       </div>
       <div id="viewport" class="viewport" hidden>
@@ -421,13 +422,13 @@
     </div>
 
     <p style="margin-top:14px;font-size:0.82rem;color:var(--muted);text-align:center;">
-      💡 Tip: The file stays in your browser — nothing is uploaded. Works with files of any size.
+      💡 Automatically loads all <code>total_*.json</code> files from the same folder. You can also manually upload a JSON file.
     </p>
   </div>
 
   <script>
     (() => {
-      console.log('🚀 App starting...');
+      console.log('🚀 App starting... Auto-load mode enabled');
       
       const $ = id => document.getElementById(id);
       const file = $('file'), search = $('search'), championshipFilter = $('championshipFilter'), showGames = $('showGames'), reset = $('reset');
@@ -436,13 +437,28 @@
       const header = $('header'), content = $('content'), footer = $('footer');
       const pageInfo = $('pageInfo'), topButton = $('top'), previous = $('previous'), next = $('next');
       const totalRecords = $('totalRecords'), showingRecords = $('showingRecords'), columnCount = $('columnCount'), statusValue = $('statusValue');
+      const progressBar = $('progressBar');
 
       let columns = [], totalRows = 0, resultCount = 0, resultBuffer = null;
       let championshipColumn = -1, resultColumn = -1;
       let sortColumn = -1, sortDirection = 1, queryTimer = null, requestId = 0;
       const rowHeight = 38, headerHeight = 42, overscan = 12, jumpSize = 1000;
+      let allData = [];
+      let loadedFiles = 0;
+      let totalFiles = 0;
 
-      console.log('✅ Initialized variables');
+      // Determine the base URL
+      const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+      console.log('📁 Base URL:', baseUrl);
+
+      // List of files to try loading
+      const fileList = [
+        'total_1.json',
+        'total_2.json',
+        'total_3.json',
+        'total_4.json',
+        'total_260905.json'
+      ];
 
       // Web Worker
       const workerSource = `
@@ -482,7 +498,7 @@
                 ? [...new Set(values.map(row => row[championshipColumn].trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
                 : [];
               console.log('Worker: Loaded', rows.length, 'rows,', columns.length, 'columns');
-              self.postMessage({ type: 'loaded', columns, count: rows.length, championshipOptions });
+              self.postMessage({ type: 'loaded', columns, count: rows.length, championshipOptions, data: values });
             }
             if (message.type === 'process') {
               const q = message.query.trim().toLowerCase();
@@ -533,45 +549,94 @@
         showError('Failed to create Web Worker: ' + error.message);
       }
 
-      // File Load
-      file.addEventListener('change', async event => {
-        const selected = event.target.files[0];
-        if (!selected) {
-          console.log('No file selected');
+      // Load all files automatically
+      async function loadAllFiles() {
+        totalFiles = fileList.length;
+        fileStatus.className = 'file-status loading';
+        fileStatus.textContent = `⏳ Loading ${totalFiles} files...`;
+        statusValue.textContent = 'Loading...';
+        statusValue.style.color = '#f59e0b';
+        progressBar.style.width = '0%';
+        
+        let allRows = [];
+        let loadedCount = 0;
+        
+        for (let i = 0; i < fileList.length; i++) {
+          const fileName = fileList[i];
+          try {
+            console.log(`📥 Attempting to load: ${fileName}`);
+            const response = await fetch(baseUrl + fileName);
+            
+            if (!response.ok) {
+              console.warn(`⚠️ File ${fileName} not found (${response.status})`);
+              loadedCount++;
+              updateProgress(loadedCount, totalFiles);
+              continue;
+            }
+            
+            const text = await response.text();
+            console.log(`📄 ${fileName} loaded (${text.length} bytes)`);
+            
+            try {
+              const data = JSON.parse(text);
+              if (Array.isArray(data)) {
+                allRows = allRows.concat(data);
+                console.log(`✅ ${fileName}: ${data.length} records loaded`);
+              } else {
+                console.warn(`⚠️ ${fileName} is not an array`);
+              }
+            } catch (parseError) {
+              console.error(`❌ Failed to parse ${fileName}:`, parseError);
+            }
+          } catch (error) {
+            console.error(`❌ Failed to load ${fileName}:`, error);
+          }
+          
+          loadedCount++;
+          updateProgress(loadedCount, totalFiles);
+          
+          // Show partial data if we have some
+          if (allRows.length > 0 && loadedCount === 1) {
+            console.log(`📊 First file loaded, showing ${allRows.length} records`);
+            processLoadedData(allRows);
+          }
+        }
+        
+        // Final update with all data
+        if (allRows.length > 0) {
+          console.log(`✅ All files loaded: ${allRows.length} total records`);
+          processLoadedData(allRows);
+          fileStatus.className = 'file-status success';
+          fileStatus.textContent = `✅ Loaded ${allRows.length.toLocaleString()} records from ${loadedCount} files`;
+          progressBar.className = 'progress-bar complete';
+          statusValue.textContent = 'Ready';
+          statusValue.style.color = 'var(--success)';
+        } else {
+          console.warn('⚠️ No data loaded from any file');
+          fileStatus.className = 'file-status error';
+          fileStatus.textContent = '❌ No data files found. Please upload manually.';
+          empty.hidden = false;
+          statusValue.textContent = 'No data';
+          statusValue.style.color = 'var(--danger)';
+        }
+      }
+
+      function updateProgress(loaded, total) {
+        const percent = Math.round((loaded / total) * 100);
+        progressBar.style.width = percent + '%';
+        fileStatus.textContent = `⏳ Loading ${loaded}/${total} files (${percent}%)`;
+        console.log(`📊 Progress: ${loaded}/${total} (${percent}%)`);
+      }
+
+      function processLoadedData(data) {
+        if (!data || data.length === 0) {
+          console.warn('⚠️ No data to process');
           return;
         }
         
-        console.log('📁 File selected:', selected.name, 'size:', selected.size, 'bytes');
-        fileStatus.className = 'file-status';
-        fileStatus.textContent = `📖 Reading ${selected.name}...`;
-        resultStatus.textContent = '';
-        empty.hidden = true;
-        viewport.hidden = true;
-        footer.hidden = true;
-        statusValue.textContent = 'Loading...';
-        statusValue.style.color = 'var(--primary)';
-        
-        try {
-          const text = await selected.text();
-          console.log('📄 File read successfully, length:', text.length, 'characters');
-          
-          if (!text || text.trim().length === 0) {
-            throw new Error('The file is empty');
-          }
-          
-          // Quick validation
-          try {
-            JSON.parse(text);
-          } catch (parseError) {
-            throw new Error('Invalid JSON format: ' + parseError.message);
-          }
-          
-          worker.postMessage({ type: 'load', source: text });
-        } catch (error) {
-          console.error('❌ Error reading file:', error);
-          showError(error.message);
-        }
-      });
+        // Send to worker for processing
+        worker.postMessage({ type: 'load', source: JSON.stringify(data) });
+      }
 
       // Worker Messages
       worker.addEventListener('message', event => {
@@ -598,10 +663,6 @@
           sortDirection = 1;
           search.value = '';
           
-          fileStatus.className = 'file-status success';
-          fileStatus.textContent = `✅ ${file.files[0].name} loaded (${totalRows.toLocaleString()} records)`;
-          statusValue.textContent = 'Ready';
-          statusValue.style.color = 'var(--success)';
           totalRecords.textContent = totalRows.toLocaleString();
           columnCount.textContent = columns.length;
           
@@ -615,6 +676,7 @@
           resultStatus.textContent = `${resultCount.toLocaleString()} of ${totalRows.toLocaleString()} records`;
           showingRecords.textContent = resultCount.toLocaleString();
           
+          empty.hidden = true;
           viewport.hidden = false;
           footer.hidden = false;
           content.style.height = `${resultCount * rowHeight}px`;
@@ -625,6 +687,42 @@
         
         if (message.type === 'rows' && message.id === requestId) {
           renderRows(message.start, message.rows);
+        }
+      });
+
+      // File upload handler (manual)
+      file.addEventListener('change', async event => {
+        const selected = event.target.files[0];
+        if (!selected) return;
+        
+        console.log('📁 Manual file selected:', selected.name);
+        fileStatus.className = 'file-status';
+        fileStatus.textContent = `📖 Reading ${selected.name}...`;
+        resultStatus.textContent = '';
+        empty.hidden = true;
+        viewport.hidden = true;
+        footer.hidden = true;
+        statusValue.textContent = 'Loading...';
+        statusValue.style.color = 'var(--primary)';
+        
+        try {
+          const text = await selected.text();
+          if (!text || text.trim().length === 0) {
+            throw new Error('The file is empty');
+          }
+          
+          try {
+            JSON.parse(text);
+          } catch (parseError) {
+            throw new Error('Invalid JSON format: ' + parseError.message);
+          }
+          
+          worker.postMessage({ type: 'load', source: text });
+          fileStatus.className = 'file-status success';
+          fileStatus.textContent = `✅ ${selected.name} loaded`;
+        } catch (error) {
+          console.error('❌ Error reading file:', error);
+          showError(error.message);
         }
       });
 
@@ -790,7 +888,9 @@
         columnCount.textContent = '—';
       }
 
-      console.log('✅ App ready, waiting for file selection');
+      // Start auto-loading
+      console.log('🔄 Starting auto-load process...');
+      loadAllFiles();
     })();
   </script>
 </body>
