@@ -253,12 +253,15 @@
     }
     .grid-row:nth-child(even) { background: #fafbfc; }
     .grid-row:hover { background: #eff6ff; }
-    .grid-row.result-one { background: #dcfce7; }
+    /* Result 1 = Green */
+    .grid-row.result-1 { background: #dcfce7; }
+    .grid-row.result-1:hover { background: #bbf7d0; }
+    /* Result X = Yellow */
     .grid-row.result-x { background: #fef9c3; }
-    .grid-row.result-two { background: #fee2e2; }
-    .grid-row.result-one:hover { background: #bbf7d0; }
     .grid-row.result-x:hover { background: #fef08a; }
-    .grid-row.result-two:hover { background: #fecaca; }
+    /* Result 2 = Red */
+    .grid-row.result-2 { background: #fee2e2; }
+    .grid-row.result-2:hover { background: #fecaca; }
     .cell {
       min-width: 0;
       overflow: hidden;
@@ -636,7 +639,8 @@
         content.innerHTML = '';
         rowData.forEach((row, offset) => {
           const rowElement = document.createElement('div');
-          rowElement.className = `grid-row ${resultClass(row[resultColumn])}`;
+          const resultValue = row[resultColumn];
+          rowElement.className = `grid-row ${resultClass(resultValue)}`;
           rowElement.style.top = `${(start + offset) * rowHeight}px`;
           row.forEach(value => {
             const cell = document.createElement('div');
@@ -657,9 +661,9 @@
 
       function resultClass(value) {
         const result = String(value ?? '').trim().toUpperCase();
-        if (result === '1') return 'result-one';
+        if (result === '1') return 'result-1';
         if (result === 'X') return 'result-x';
-        if (result === '2') return 'result-two';
+        if (result === '2') return 'result-2';
         return '';
       }
 
