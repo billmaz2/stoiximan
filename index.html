@@ -253,15 +253,40 @@
     }
     .grid-row:nth-child(even) { background: #fafbfc; }
     .grid-row:hover { background: #eff6ff; }
-    /* Result 1 = Green */
-    .grid-row.result-1 { background: #dcfce7; }
-    .grid-row.result-1:hover { background: #bbf7d0; }
+    
+    /* Result 1 = GREEN - This is the main change */
+    .grid-row.result-1 { 
+      background: #dcfce7 !important; 
+    }
+    .grid-row.result-1:hover { 
+      background: #bbf7d0 !important; 
+    }
+    .grid-row.result-1:nth-child(even) { 
+      background: #dcfce7 !important; 
+    }
+    
     /* Result X = Yellow */
-    .grid-row.result-x { background: #fef9c3; }
-    .grid-row.result-x:hover { background: #fef08a; }
+    .grid-row.result-x { 
+      background: #fef9c3 !important; 
+    }
+    .grid-row.result-x:hover { 
+      background: #fef08a !important; 
+    }
+    .grid-row.result-x:nth-child(even) { 
+      background: #fef9c3 !important; 
+    }
+    
     /* Result 2 = Red */
-    .grid-row.result-2 { background: #fee2e2; }
-    .grid-row.result-2:hover { background: #fecaca; }
+    .grid-row.result-2 { 
+      background: #fee2e2 !important; 
+    }
+    .grid-row.result-2:hover { 
+      background: #fecaca !important; 
+    }
+    .grid-row.result-2:nth-child(even) { 
+      background: #fee2e2 !important; 
+    }
+    
     .cell {
       min-width: 0;
       overflow: hidden;
