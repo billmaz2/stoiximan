@@ -313,23 +313,42 @@
     .footer button:hover:not(:disabled) { background: var(--base-300); }
     .footer button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* Progress Bar */
+    /* Enhanced Progress Bar */
     .progress-container {
       width: 100%;
-      height: 6px;
+      height: 8px;
       background: var(--base-300);
-      border-radius: 3px;
+      border-radius: 4px;
       overflow: hidden;
-      margin-top: 8px;
+      margin: 8px 0 12px 0;
+      position: relative;
     }
     .progress-bar {
       height: 100%;
-      background: var(--primary);
+      background: linear-gradient(90deg, var(--primary), #60a5fa);
       width: 0%;
-      transition: width 0.3s ease;
+      transition: width 0.4s ease;
+      border-radius: 4px;
+      position: relative;
+    }
+    .progress-bar.complete { 
+      background: linear-gradient(90deg, var(--success), #4ade80);
+    }
+    .progress-bar.error { 
+      background: linear-gradient(90deg, var(--danger), #f87171);
+    }
+    .progress-text {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--base-200);
+      padding: 0 6px;
       border-radius: 3px;
     }
-    .progress-bar.complete { background: var(--success); }
 
     @media (max-width: 860px) {
       .toolbar {
@@ -355,7 +374,7 @@
     <header class="hero">
       <h1>⚡ Fast JSON Table Viewer</h1>
       <p class="subtitle">Automatically loads all <code>total_*.json</code> files from the server</p>
-      <span class="badge">🚀 Virtual scrolling · Auto-load · Progress tracking · 0 dependencies</span>
+      <span class="badge">🚀 Auto-load · Progress tracking · Virtual scrolling · Result coloring</span>
     </header>
 
     <div class="stats-grid" id="statsGrid">
@@ -373,7 +392,7 @@
       </div>
       <div class="stat-card">
         <div class="label">Status</div>
-        <div class="value" id="statusValue" style="font-size:1rem;font-weight:500;">Initializing...</div>
+        <div class="value" id="statusValue" style="font-size:1rem;font-weight:500;">Loading...</div>
       </div>
     </div>
 
@@ -383,7 +402,7 @@
         <option value="">All championships</option>
       </select>
       <button id="showGames" class="primary" type="button" disabled>Show selected</button>
-      <label class="primary">📂 Open JSON<input id="file" type="file" accept=".json,application/json"></label>
+      <label class="primary">📂 Import JSON<input id="file" type="file" accept=".json,application/json"></label>
       <button id="reset" class="reset" type="button">↺ Reset</button>
     </div>
 
@@ -422,7 +441,7 @@
     </div>
 
     <p style="margin-top:14px;font-size:0.82rem;color:var(--muted);text-align:center;">
-      💡 Automatically loads all <code>total_*.json</code> files from the same folder. You can also manually upload a JSON file.
+      💡 Automatically loads all <code>total_*.json</code> files on startup. Use "Import JSON" to manually upload files.
     </p>
   </div>
 
@@ -443,9 +462,7 @@
       let championshipColumn = -1, resultColumn = -1;
       let sortColumn = -1, sortDirection = 1, queryTimer = null, requestId = 0;
       const rowHeight = 38, headerHeight = 42, overscan = 12, jumpSize = 1000;
-      let allData = [];
-      let loadedFiles = 0;
-      let totalFiles = 0;
+      let allDataLoaded = false;
 
       // Determine the base URL
       const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
@@ -498,7 +515,7 @@
                 ? [...new Set(values.map(row => row[championshipColumn].trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
                 : [];
               console.log('Worker: Loaded', rows.length, 'rows,', columns.length, 'columns');
-              self.postMessage({ type: 'loaded', columns, count: rows.length, championshipOptions, data: values });
+              self.postMessage({ type: 'loaded', columns, count: rows.length, championshipOptions });
             }
             if (message.type === 'process') {
               const q = message.query.trim().toLowerCase();
@@ -549,17 +566,19 @@
         showError('Failed to create Web Worker: ' + error.message);
       }
 
-      // Load all files automatically
+      // Load all files automatically on startup
       async function loadAllFiles() {
-        totalFiles = fileList.length;
+        const totalFiles = fileList.length;
         fileStatus.className = 'file-status loading';
         fileStatus.textContent = `⏳ Loading ${totalFiles} files...`;
         statusValue.textContent = 'Loading...';
         statusValue.style.color = '#f59e0b';
         progressBar.style.width = '0%';
+        progressBar.className = 'progress-bar';
         
         let allRows = [];
         let loadedCount = 0;
+        let successfulFiles = 0;
         
         for (let i = 0; i < fileList.length; i++) {
           const fileName = fileList[i];
@@ -570,7 +589,7 @@
             if (!response.ok) {
               console.warn(`⚠️ File ${fileName} not found (${response.status})`);
               loadedCount++;
-              updateProgress(loadedCount, totalFiles);
+              updateProgress(loadedCount, totalFiles, successfulFiles);
               continue;
             }
             
@@ -579,11 +598,12 @@
             
             try {
               const data = JSON.parse(text);
-              if (Array.isArray(data)) {
+              if (Array.isArray(data) && data.length > 0) {
                 allRows = allRows.concat(data);
-                console.log(`✅ ${fileName}: ${data.length} records loaded`);
+                successfulFiles++;
+                console.log(`✅ ${fileName}: ${data.length} records loaded (Total: ${allRows.length})`);
               } else {
-                console.warn(`⚠️ ${fileName} is not an array`);
+                console.warn(`⚠️ ${fileName} is empty or not an array`);
               }
             } catch (parseError) {
               console.error(`❌ Failed to parse ${fileName}:`, parseError);
@@ -593,39 +613,44 @@
           }
           
           loadedCount++;
-          updateProgress(loadedCount, totalFiles);
+          updateProgress(loadedCount, totalFiles, successfulFiles);
           
-          // Show partial data if we have some
-          if (allRows.length > 0 && loadedCount === 1) {
+          // Show partial data after first successful file
+          if (allRows.length > 0 && successfulFiles === 1 && !allDataLoaded) {
             console.log(`📊 First file loaded, showing ${allRows.length} records`);
             processLoadedData(allRows);
+            allDataLoaded = true;
           }
         }
         
         // Final update with all data
         if (allRows.length > 0) {
-          console.log(`✅ All files loaded: ${allRows.length} total records`);
+          console.log(`✅ All files loaded: ${allRows.length} total records from ${successfulFiles} files`);
           processLoadedData(allRows);
           fileStatus.className = 'file-status success';
-          fileStatus.textContent = `✅ Loaded ${allRows.length.toLocaleString()} records from ${loadedCount} files`;
+          fileStatus.textContent = `✅ Loaded ${allRows.length.toLocaleString()} records from ${successfulFiles} files`;
           progressBar.className = 'progress-bar complete';
+          progressBar.style.width = '100%';
           statusValue.textContent = 'Ready';
           statusValue.style.color = 'var(--success)';
         } else {
           console.warn('⚠️ No data loaded from any file');
           fileStatus.className = 'file-status error';
-          fileStatus.textContent = '❌ No data files found. Please upload manually.';
-          empty.hidden = false;
+          fileStatus.textContent = '❌ No data files found. Please use "Import JSON" to upload.';
+          progressBar.className = 'progress-bar error';
+          progressBar.style.width = '100%';
           statusValue.textContent = 'No data';
           statusValue.style.color = 'var(--danger)';
+          empty.hidden = false;
         }
       }
 
-      function updateProgress(loaded, total) {
-        const percent = Math.round((loaded / total) * 100);
+      function updateProgress(loaded, total, successful) {
+        const percent = Math.min(Math.round((loaded / total) * 100), 100);
         progressBar.style.width = percent + '%';
-        fileStatus.textContent = `⏳ Loading ${loaded}/${total} files (${percent}%)`;
-        console.log(`📊 Progress: ${loaded}/${total} (${percent}%)`);
+        const successText = successful > 0 ? ` (${successful} found)` : '';
+        fileStatus.textContent = `⏳ Loading ${loaded}/${total} files${successText} (${percent}%)`;
+        console.log(`📊 Progress: ${loaded}/${total} (${percent}%) - ${successful} successful files`);
       }
 
       function processLoadedData(data) {
@@ -690,13 +715,13 @@
         }
       });
 
-      // File upload handler (manual)
+      // File upload handler (manual import)
       file.addEventListener('change', async event => {
         const selected = event.target.files[0];
         if (!selected) return;
         
-        console.log('📁 Manual file selected:', selected.name);
-        fileStatus.className = 'file-status';
+        console.log('📁 Manual import:', selected.name);
+        fileStatus.className = 'file-status loading';
         fileStatus.textContent = `📖 Reading ${selected.name}...`;
         resultStatus.textContent = '';
         empty.hidden = true;
@@ -704,6 +729,8 @@
         footer.hidden = true;
         statusValue.textContent = 'Loading...';
         statusValue.style.color = 'var(--primary)';
+        progressBar.className = 'progress-bar';
+        progressBar.style.width = '50%';
         
         try {
           const text = await selected.text();
@@ -718,10 +745,15 @@
           }
           
           worker.postMessage({ type: 'load', source: text });
+          progressBar.style.width = '100%';
+          progressBar.className = 'progress-bar complete';
           fileStatus.className = 'file-status success';
-          fileStatus.textContent = `✅ ${selected.name} loaded`;
+          fileStatus.textContent = `✅ ${selected.name} imported successfully`;
+          statusValue.textContent = 'Ready';
+          statusValue.style.color = 'var(--success)';
         } catch (error) {
           console.error('❌ Error reading file:', error);
+          progressBar.className = 'progress-bar error';
           showError(error.message);
         }
       });
@@ -888,7 +920,7 @@
         columnCount.textContent = '—';
       }
 
-      // Start auto-loading
+      // Start auto-loading on page load
       console.log('🔄 Starting auto-load process...');
       loadAllFiles();
     })();
