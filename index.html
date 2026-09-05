@@ -28,14 +28,12 @@
       line-height: 1.6;
     }
 
-    /* Presentation Layout */
     .presentation {
       max-width: 1600px;
       margin: 0 auto;
       padding: 20px 24px 40px;
     }
 
-    /* Hero Section */
     .hero {
       background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
       color: white;
@@ -75,7 +73,6 @@
       border: 1px solid rgba(255,255,255,0.08);
     }
 
-    /* Stats Grid */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -104,7 +101,6 @@
     .stat-card .value.green { color: var(--success); }
     .stat-card .value.blue { color: var(--primary); }
 
-    /* Toolbar - Clean & Minimal */
     .toolbar {
       display: grid;
       grid-template-columns: 1fr 1.2fr 0.8fr 0.8fr auto;
@@ -166,7 +162,6 @@
     .toolbar label input { display: none; }
     .toolbar button.reset { background: transparent; border-color: var(--base-300); }
 
-    /* Status Bar */
     .status-bar {
       display: flex;
       justify-content: space-between;
@@ -181,7 +176,6 @@
     .status-bar .file-status.error { color: var(--danger); }
     .status-bar .result-count { font-weight: 600; color: var(--content); }
 
-    /* Viewer */
     .viewer-panel {
       background: var(--base-200);
       border-radius: var(--radius);
@@ -254,7 +248,7 @@
     .grid-row:nth-child(even) { background: #fafbfc; }
     .grid-row:hover { background: #eff6ff; }
     
-    /* Result 1 = GREEN - This is the main change */
+    /* Result 1 = GREEN */
     .grid-row.result-1 { 
       background: #dcfce7 !important; 
     }
@@ -297,7 +291,6 @@
       font-size: 0.88rem;
     }
 
-    /* Empty State */
     .empty {
       min-height: 320px;
       display: grid;
@@ -315,7 +308,6 @@
     }
     .empty .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
 
-    /* Footer */
     .footer {
       display: flex;
       align-items: center;
@@ -342,7 +334,6 @@
     .footer button:hover:not(:disabled) { background: var(--base-300); }
     .footer button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* Responsive */
     @media (max-width: 860px) {
       .toolbar {
         grid-template-columns: 1fr 1fr;
@@ -364,14 +355,12 @@
 </head>
 <body>
   <div class="presentation">
-    <!-- Hero Section -->
     <header class="hero">
       <h1>⚡ Fast JSON Table Viewer</h1>
       <p class="subtitle">Load &amp; explore large JSON arrays instantly — only visible rows are rendered.</p>
       <span class="badge">🚀 Virtual scrolling · Sorting · Filtering · 0 dependencies</span>
     </header>
 
-    <!-- Stats -->
     <div class="stats-grid" id="statsGrid">
       <div class="stat-card">
         <div class="label">Total Records</div>
@@ -391,7 +380,6 @@
       </div>
     </div>
 
-    <!-- Toolbar -->
     <div class="toolbar">
       <input id="search" type="search" placeholder="🔍 Search all columns..." autocomplete="off">
       <select id="championshipFilter" aria-label="Filter by championship" disabled>
@@ -402,19 +390,18 @@
       <button id="reset" class="reset" type="button">↺ Reset</button>
     </div>
 
-    <!-- Status Bar -->
     <div class="status-bar">
       <span class="file-status" id="fileStatus">No JSON file loaded</span>
       <span class="result-count" id="resultStatus"></span>
     </div>
 
-    <!-- Viewer -->
     <div class="viewer-panel">
       <div id="empty" class="empty">
         <div>
           <div class="icon">📄</div>
           <strong>Select a JSON file to begin</strong>
           <p style="margin-top:6px;">Expected format: an array of objects, e.g. <code>[{"name":"Alice","age":30}]</code></p>
+          <p style="margin-top:10px;font-size:0.85rem;color:#999;">⚠️ Make sure your JSON file is valid and contains an array</p>
         </div>
       </div>
       <div id="viewport" class="viewport" hidden>
@@ -440,6 +427,8 @@
 
   <script>
     (() => {
+      console.log('🚀 App starting...');
+      
       const $ = id => document.getElementById(id);
       const file = $('file'), search = $('search'), championshipFilter = $('championshipFilter'), showGames = $('showGames'), reset = $('reset');
       const fileStatus = $('fileStatus'), resultStatus = $('resultStatus');
@@ -452,6 +441,8 @@
       let championshipColumn = -1, resultColumn = -1;
       let sortColumn = -1, sortDirection = 1, queryTimer = null, requestId = 0;
       const rowHeight = 38, headerHeight = 42, overscan = 12, jumpSize = 1000;
+
+      console.log('✅ Initialized variables');
 
       // Web Worker
       const workerSource = `
@@ -474,6 +465,7 @@
           const message = event.data;
           try {
             if (message.type === 'load') {
+              console.log('Worker: Loading data...');
               const parsed = JSON.parse(message.source);
               if (!Array.isArray(parsed)) throw new Error('The JSON root must be an array.');
               rows = parsed.map(item => {
@@ -489,6 +481,7 @@
               const championshipOptions = championshipColumn >= 0
                 ? [...new Set(values.map(row => row[championshipColumn].trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
                 : [];
+              console.log('Worker: Loaded', rows.length, 'rows,', columns.length, 'columns');
               self.postMessage({ type: 'loaded', columns, count: rows.length, championshipOptions });
             }
             if (message.type === 'process') {
@@ -508,6 +501,7 @@
                 indexes.sort((left, right) => direction * compare(values[left][column] || '', values[right][column] || ''));
               }
               const result = new Uint32Array(indexes);
+              console.log('Worker: Processed', result.length, 'results');
               self.postMessage({ type: 'result', id: message.id, count: result.length, indexes: result.buffer }, [result.buffer]);
             }
             if (message.type === 'rows') {
@@ -522,16 +516,32 @@
               self.postMessage({ type: 'rows', id: message.id, start: message.start, rows: output });
             }
           } catch (error) {
+            console.error('Worker Error:', error);
             self.postMessage({ type: 'error', message: error.message });
           }
         };
       `;
-      const worker = new Worker(URL.createObjectURL(new Blob([workerSource], { type: 'application/javascript' })));
+      
+      let worker;
+      try {
+        const blob = new Blob([workerSource], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(blob);
+        worker = new Worker(workerUrl);
+        console.log('✅ Web Worker created successfully');
+      } catch (error) {
+        console.error('❌ Failed to create worker:', error);
+        showError('Failed to create Web Worker: ' + error.message);
+      }
 
       // File Load
       file.addEventListener('change', async event => {
         const selected = event.target.files[0];
-        if (!selected) return;
+        if (!selected) {
+          console.log('No file selected');
+          return;
+        }
+        
+        console.log('📁 File selected:', selected.name, 'size:', selected.size, 'bytes');
         fileStatus.className = 'file-status';
         fileStatus.textContent = `📖 Reading ${selected.name}...`;
         resultStatus.textContent = '';
@@ -540,38 +550,71 @@
         footer.hidden = true;
         statusValue.textContent = 'Loading...';
         statusValue.style.color = 'var(--primary)';
+        
         try {
-          worker.postMessage({ type: 'load', source: await selected.text() });
-        } catch (error) { showError(error.message); }
+          const text = await selected.text();
+          console.log('📄 File read successfully, length:', text.length, 'characters');
+          
+          if (!text || text.trim().length === 0) {
+            throw new Error('The file is empty');
+          }
+          
+          // Quick validation
+          try {
+            JSON.parse(text);
+          } catch (parseError) {
+            throw new Error('Invalid JSON format: ' + parseError.message);
+          }
+          
+          worker.postMessage({ type: 'load', source: text });
+        } catch (error) {
+          console.error('❌ Error reading file:', error);
+          showError(error.message);
+        }
       });
 
       // Worker Messages
       worker.addEventListener('message', event => {
         const message = event.data;
-        if (message.type === 'error') return showError(message.message);
+        console.log('📨 Worker message:', message.type);
+        
+        if (message.type === 'error') {
+          console.error('❌ Worker error:', message.message);
+          return showError(message.message);
+        }
+        
         if (message.type === 'loaded') {
           columns = message.columns;
           totalRows = message.count;
           championshipColumn = columns.findIndex(column => column.trim().toLowerCase().includes('championship'));
           resultColumn = findResultColumn(columns);
+          
+          console.log('✅ Data loaded:', totalRows, 'rows,', columns.length, 'columns');
+          console.log('Championship column index:', championshipColumn);
+          console.log('Result column index:', resultColumn);
+          
           populateChampionshipFilter(message.championshipOptions || []);
           sortColumn = -1;
           sortDirection = 1;
           search.value = '';
+          
           fileStatus.className = 'file-status success';
           fileStatus.textContent = `✅ ${file.files[0].name} loaded (${totalRows.toLocaleString()} records)`;
           statusValue.textContent = 'Ready';
           statusValue.style.color = 'var(--success)';
           totalRecords.textContent = totalRows.toLocaleString();
           columnCount.textContent = columns.length;
+          
           configureGrid();
           process();
         }
+        
         if (message.type === 'result' && message.id === requestId) {
           resultBuffer = message.indexes;
           resultCount = message.count;
           resultStatus.textContent = `${resultCount.toLocaleString()} of ${totalRows.toLocaleString()} records`;
           showingRecords.textContent = resultCount.toLocaleString();
+          
           viewport.hidden = false;
           footer.hidden = false;
           content.style.height = `${resultCount * rowHeight}px`;
@@ -579,7 +622,10 @@
           renderVisible();
           updateButtons();
         }
-        if (message.type === 'rows' && message.id === requestId) renderRows(message.start, message.rows);
+        
+        if (message.type === 'rows' && message.id === requestId) {
+          renderRows(message.start, message.rows);
+        }
       });
 
       // UI Helpers
@@ -597,6 +643,7 @@
         });
         championshipFilter.disabled = options.length === 0;
         showGames.disabled = championshipFilter.options.length <= 1;
+        console.log('🏆 Championship options:', options.length);
       }
 
       function configureGrid() {
@@ -623,6 +670,7 @@
           header.appendChild(button);
         });
         updateSortIndicators();
+        console.log('📊 Grid configured with', columns.length, 'columns');
       }
 
       function updateSortIndicators() {
@@ -644,6 +692,7 @@
           column: sortColumn,
           direction: sortDirection
         });
+        console.log('🔄 Processing request:', id);
       }
 
       function requestRows(start, length) {
@@ -708,7 +757,7 @@
       });
       championshipFilter.addEventListener('change', () => {
         showGames.disabled = !championshipFilter.value;
-        resultStatus.textContent = championshipFilter.value ? 'Press “Show selected” to apply filter.' : '';
+        resultStatus.textContent = championshipFilter.value ? 'Press "Show selected" to apply filter.' : '';
       });
       showGames.addEventListener('click', () => {
         if (championshipFilter.value) process();
@@ -727,6 +776,7 @@
       next.addEventListener('click', () => { viewport.scrollTop = Math.min(viewport.scrollHeight, viewport.scrollTop + jumpSize * rowHeight); });
 
       function showError(message) {
+        console.error('❌ Error displayed:', message);
         fileStatus.className = 'file-status error';
         fileStatus.textContent = `❌ Error: ${message}`;
         resultStatus.textContent = '';
@@ -739,6 +789,8 @@
         showingRecords.textContent = '—';
         columnCount.textContent = '—';
       }
+
+      console.log('✅ App ready, waiting for file selection');
     })();
   </script>
 </body>
